@@ -1,0 +1,224 @@
+[
+  {
+    "task_id": "low-latency-chat",
+    "workload_type": "chat",
+    "objective": "Serve a real-time chat request with light structure and fast response time.",
+    "prompt_tokens": 1200,
+    "completion_tokens": 350,
+    "max_latency_ms": 900,
+    "min_quality_score": 0.7,
+    "privacy_requirement": "public",
+    "max_cost_usd": 0.02,
+    "required_capabilities": ["json-mode", "streaming"],
+    "candidate_providers": [
+      {
+        "provider_id": "groq-llama-70b",
+        "provider_kind": "external_api",
+        "model_id": "llama-3.3-70b",
+        "estimated_cost_usd": 0.004,
+        "estimated_latency_ms": 420,
+        "quality_score": 0.74,
+        "reliability_score": 0.93,
+        "privacy_tier": "public",
+        "capabilities": ["json-mode", "streaming"]
+      },
+      {
+        "provider_id": "bt-text-alpha",
+        "provider_kind": "bittensor_subnet",
+        "model_id": "sn-chat-alpha",
+        "estimated_cost_usd": 0.0032,
+        "estimated_latency_ms": 610,
+        "quality_score": 0.71,
+        "reliability_score": 0.88,
+        "privacy_tier": "internal",
+        "capabilities": ["json-mode", "streaming"]
+      },
+      {
+        "provider_id": "claude-sonnet",
+        "provider_kind": "external_api",
+        "model_id": "claude-sonnet-4",
+        "estimated_cost_usd": 0.018,
+        "estimated_latency_ms": 1300,
+        "quality_score": 0.92,
+        "reliability_score": 0.97,
+        "privacy_tier": "internal",
+        "capabilities": ["json-mode", "streaming", "function-calling"]
+      }
+    ],
+    "metadata": {
+      "tenant": "consumer-support"
+    }
+  },
+  {
+    "task_id": "confidential-code-review",
+    "workload_type": "code",
+    "objective": "Route a security-sensitive code review request through a confidential path.",
+    "prompt_tokens": 6000,
+    "completion_tokens": 1200,
+    "max_latency_ms": 2200,
+    "min_quality_score": 0.84,
+    "privacy_requirement": "confidential",
+    "max_cost_usd": 0.08,
+    "required_capabilities": ["codegen", "json-mode"],
+    "candidate_providers": [
+      {
+        "provider_id": "tee-codeguard",
+        "provider_kind": "tee",
+        "model_id": "secure-codeguard-v1",
+        "estimated_cost_usd": 0.055,
+        "estimated_latency_ms": 1700,
+        "quality_score": 0.88,
+        "reliability_score": 0.94,
+        "privacy_tier": "confidential",
+        "capabilities": ["codegen", "json-mode"]
+      },
+      {
+        "provider_id": "confi-bt-tee",
+        "provider_kind": "bittensor_subnet",
+        "model_id": "sn-tee-code-beta",
+        "estimated_cost_usd": 0.067,
+        "estimated_latency_ms": 1250,
+        "quality_score": 0.86,
+        "reliability_score": 0.91,
+        "privacy_tier": "confidential",
+        "capabilities": ["codegen", "json-mode", "function-calling"]
+      },
+      {
+        "provider_id": "claude-sonnet",
+        "provider_kind": "external_api",
+        "model_id": "claude-sonnet-4",
+        "estimated_cost_usd": 0.032,
+        "estimated_latency_ms": 1600,
+        "quality_score": 0.91,
+        "reliability_score": 0.97,
+        "privacy_tier": "internal",
+        "capabilities": ["codegen", "json-mode", "function-calling"]
+      },
+      {
+        "provider_id": "bt-code-beta",
+        "provider_kind": "bittensor_subnet",
+        "model_id": "sn-code-beta",
+        "estimated_cost_usd": 0.021,
+        "estimated_latency_ms": 950,
+        "quality_score": 0.79,
+        "reliability_score": 0.85,
+        "privacy_tier": "internal",
+        "capabilities": ["codegen", "json-mode"]
+      }
+    ],
+    "metadata": {
+      "tenant": "defi-protocol"
+    }
+  },
+  {
+    "task_id": "budget-summary",
+    "workload_type": "summarization",
+    "objective": "Summarize a long internal report as cheaply as possible within soft quality bounds.",
+    "prompt_tokens": 4800,
+    "completion_tokens": 500,
+    "max_latency_ms": 1800,
+    "min_quality_score": 0.6,
+    "privacy_requirement": "public",
+    "max_cost_usd": 0.008,
+    "required_capabilities": ["json-mode"],
+    "candidate_providers": [
+      {
+        "provider_id": "bt-text-alpha",
+        "provider_kind": "bittensor_subnet",
+        "model_id": "sn-chat-alpha",
+        "estimated_cost_usd": 0.0026,
+        "estimated_latency_ms": 540,
+        "quality_score": 0.68,
+        "reliability_score": 0.88,
+        "privacy_tier": "internal",
+        "capabilities": ["json-mode", "streaming"]
+      },
+      {
+        "provider_id": "groq-llama-8b",
+        "provider_kind": "external_api",
+        "model_id": "llama-3.1-8b",
+        "estimated_cost_usd": 0.0031,
+        "estimated_latency_ms": 360,
+        "quality_score": 0.63,
+        "reliability_score": 0.9,
+        "privacy_tier": "public",
+        "capabilities": ["json-mode", "streaming"]
+      },
+      {
+        "provider_id": "openrouter-gpt-4.1-mini",
+        "provider_kind": "external_api",
+        "model_id": "gpt-4.1-mini",
+        "estimated_cost_usd": 0.0092,
+        "estimated_latency_ms": 980,
+        "quality_score": 0.82,
+        "reliability_score": 0.95,
+        "privacy_tier": "public",
+        "capabilities": ["json-mode", "function-calling"]
+      }
+    ],
+    "metadata": {
+      "tenant": "ops-analytics"
+    }
+  },
+  {
+    "task_id": "tool-using-agent-step",
+    "workload_type": "agent-step",
+    "objective": "Route a tool-using workflow step that needs structured output and durable reliability.",
+    "prompt_tokens": 2500,
+    "completion_tokens": 650,
+    "max_latency_ms": 2600,
+    "min_quality_score": 0.86,
+    "privacy_requirement": "internal",
+    "max_cost_usd": 0.05,
+    "required_capabilities": ["function-calling", "json-mode"],
+    "candidate_providers": [
+      {
+        "provider_id": "claude-sonnet",
+        "provider_kind": "external_api",
+        "model_id": "claude-sonnet-4",
+        "estimated_cost_usd": 0.034,
+        "estimated_latency_ms": 1850,
+        "quality_score": 0.92,
+        "reliability_score": 0.97,
+        "privacy_tier": "internal",
+        "capabilities": ["function-calling", "json-mode", "streaming"]
+      },
+      {
+        "provider_id": "bt-reasoner-ops",
+        "provider_kind": "bittensor_subnet",
+        "model_id": "sn-reasoner-ops",
+        "estimated_cost_usd": 0.026,
+        "estimated_latency_ms": 2100,
+        "quality_score": 0.87,
+        "reliability_score": 0.89,
+        "privacy_tier": "internal",
+        "capabilities": ["function-calling", "json-mode"]
+      },
+      {
+        "provider_id": "gpt-4.1-mini",
+        "provider_kind": "external_api",
+        "model_id": "gpt-4.1-mini",
+        "estimated_cost_usd": 0.029,
+        "estimated_latency_ms": 1500,
+        "quality_score": 0.88,
+        "reliability_score": 0.95,
+        "privacy_tier": "public",
+        "capabilities": ["function-calling", "json-mode"]
+      },
+      {
+        "provider_id": "tee-agent-route",
+        "provider_kind": "tee",
+        "model_id": "secure-agent-route-v1",
+        "estimated_cost_usd": 0.047,
+        "estimated_latency_ms": 2300,
+        "quality_score": 0.89,
+        "reliability_score": 0.93,
+        "privacy_tier": "confidential",
+        "capabilities": ["function-calling", "json-mode"]
+      }
+    ],
+    "metadata": {
+      "tenant": "enterprise-automation"
+    }
+  }
+]

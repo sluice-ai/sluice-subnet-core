@@ -1,0 +1,2 @@
+# The sandbox image is intentionally minimal.
+# Miner routing agents should be pure Python and vendored with their repo.
