@@ -47,7 +47,28 @@ def _check_command(command: str) -> tuple[bool, str]:
     return _ok(f"`{command}` found at {path}")
 
 
-def _check_docker() -> tuple[bool, str]:
+def _check_host_docker_cli() -> tuple[bool, str]:
+    if shutil.which("flatpak-spawn") is None:
+        return _fail("SLUICE_USE_HOST_DOCKER_CLI=1 but `flatpak-spawn` is not on PATH")
+
+    result = subprocess.run(
+        ["flatpak-spawn", "--host", "docker", "info", "--format", "{{.ServerVersion}}"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        return _fail(f"host Docker daemon is not reachable via flatpak-spawn: {detail}")
+    return _ok(f"host Docker daemon reachable via flatpak-spawn, server={result.stdout.strip()}")
+
+
+def _check_docker(env: dict[str, str]) -> tuple[bool, str]:
+    if env.get("SLUICE_USE_HOST_DOCKER_CLI", "0").strip() == "1":
+        return _check_host_docker_cli()
+
     if shutil.which("docker") is None:
         return _fail("Docker is not installed or not on PATH")
 
@@ -143,7 +164,7 @@ def _check_validator(env: dict[str, str]) -> list[tuple[bool, str]]:
     else:
         checks.append(_ok("validator will build the sandbox image on startup"))
 
-    checks.append(_check_docker())
+    checks.append(_check_docker(env))
     return checks
 
 

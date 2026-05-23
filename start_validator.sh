@@ -18,6 +18,7 @@ NUM_CONCURRENT_FORWARDS="${NUM_CONCURRENT_FORWARDS:-1}"
 CHALLENGE_INTERVAL="${CHALLENGE_INTERVAL:-12}"
 EPOCH_LENGTH="${EPOCH_LENGTH:-100}"
 DISABLE_SET_WEIGHTS="${DISABLE_SET_WEIGHTS:-0}"
+VPERMIT_TAO_LIMIT="${VPERMIT_TAO_LIMIT:-4096}"
 
 EXTRA_ARGS=()
 if [[ "${MOCK}" == "1" ]]; then
@@ -41,4 +42,5 @@ python neurons/validator.py \
   --neuron.num_concurrent_forwards "${NUM_CONCURRENT_FORWARDS}" \
   --neuron.challenge_interval "${CHALLENGE_INTERVAL}" \
   --neuron.epoch_length "${EPOCH_LENGTH}" \
+  --neuron.vpermit_tao_limit "${VPERMIT_TAO_LIMIT}" \
   "${EXTRA_ARGS[@]}"
