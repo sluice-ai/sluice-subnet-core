@@ -29,6 +29,7 @@ mypy = "^1.10.0"
 [tool.poetry.scripts]
 sluice-validator = "neurons.validator:main"
 sluice-miner = "neurons.miner:main"
+sluice-build-router = "sluice.router.builder:main"
 validator = "neurons.validator:main"
 miner = "neurons.miner:main"
 

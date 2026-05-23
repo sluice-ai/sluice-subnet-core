@@ -9,9 +9,13 @@ class RoutePlanSynapse(bt.Synapse):
         default="",
         description="A JSON-serialized Sluice routing benchmark task.",
     )
+    router_manifest_json: typing.Optional[str] = Field(
+        default=None,
+        description="JSON-serialized artifact manifest for the miner's routing policy.",
+    )
     router_repo_url: typing.Optional[str] = Field(
         default=None,
-        description="Public git or file URL for the miner's routing agent repository.",
+        description="Deprecated legacy router repository URL.",
     )
     router_version: typing.Optional[str] = Field(
         default=None,
@@ -31,4 +35,4 @@ class RoutePlanSynapse(bt.Synapse):
     )
 
     def deserialize(self) -> typing.Optional[str]:
-        return self.router_repo_url
+        return self.router_manifest_json or self.router_repo_url

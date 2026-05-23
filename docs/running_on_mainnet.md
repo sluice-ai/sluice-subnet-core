@@ -1,244 +1,228 @@
-# Running Subnet on Mainnet
+# Run on Mainnet
 
-This tutorial shows how to use the bittensor `btcli` to create a subnetwork and connect your incentive mechanism to it. 
+This guide shows the mainnet bring-up path for the Sluice subnet miner and validator.
 
-**IMPORTANT:** Before attempting to register on mainnet, we strongly recommend that you:
-- First run [Running Subnet Locally](running_on_staging.md), and
-- Then run [Running on the Testnet](running_on_testnet.md).
+Only use this path after you have already succeeded on [staging](running_on_staging.md) and [testnet](running_on_testnet.md). Mainnet errors are more expensive and harder to recover from.
 
-Your incentive mechanisms running on the mainnet are open to anyone. They emit real TAO. Creating these mechanisms incur a `lock_cost` in TAO.
+For role expectations, see [Miner and Validator Guide](miner_validator_guide.md).
 
-**DANGER**
-- Do not expose your private keys.
-- Only use your testnet wallet.
-- Do not reuse the password of your mainnet wallet.
-- Make sure your incentive mechanism is resistant to abuse. 
+## Mainnet Safety Notes
 
-## Prerequisites
+- use separate production wallets
+- do not reuse testnet passwords
+- protect hotkeys and coldkeys carefully
+- verify every `netuid`, wallet name, and artifact path before submitting transactions
+- do not advertise router capabilities or privacy guarantees your artifact cannot actually satisfy
 
-Before proceeding further, make sure that you have installed Bittensor. See the below instructions:
+The exact `btcli` argument spellings can vary by release. If your installed CLI differs, prefer the form shown in `btcli --help`.
 
-- [Install `bittensor`](https://github.com/opentensor/bittensor#install).
-
-After installing `bittensor`, proceed as below:
-
-## Steps
-
-## 1. Install your subnet template
-
-**NOTE: Skip this step if** you already did this during local testing and development.
-
-In your project directory:
+## 1. Prepare the repo
 
 ```bash
-git clone https://github.com/opentensor/bittensor-subnet-template.git 
+python -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env.miner
+cp .env.example .env.validator
+docker info
 ```
 
-Next, `cd` into `bittensor-subnet-template` repo directory:
+Build the router artifact you want to serve. Mainnet artifacts must use a public HTTP(S) URI, not `file://`.
 
 ```bash
-cd bittensor-subnet-template
+export PUBLIC_ARTIFACT_URI="https://example.com/sluice-baseline-router-0.1.0.tar.gz"
+
+python -m sluice.router.builder \
+  --source-dir agent \
+  --output-dir dist/router \
+  --router-name sluice-baseline-router \
+  --router-version 0.1.0 \
+  --capability json-mode \
+  --privacy-tier public \
+  --artifact-uri "${PUBLIC_ARTIFACT_URI}"
 ```
 
-Install the Bittensor subnet template package:
+Write production env files:
 
 ```bash
-python -m pip install -e . # Install your subnet template package
+cat > .env.miner <<EOF
+ROUTER_MANIFEST_PATH=$(pwd)/dist/router/sluice-baseline-router-0.1.0.manifest.json
+ROUTER_LABEL=sluice-baseline-router
+ROUTER_VERSION=0.1.0
+ROUTER_SUMMARY=Baseline Sluice router artifact.
+ROUTER_SUPPORTED_CAPABILITIES=json-mode
+ROUTER_SUPPORTED_PRIVACY_TIERS=public
+EOF
+
+cat > .env.validator <<EOF
+SLUICE_TASK_API=
+SLUICE_SKIP_SANDBOX_BUILD=0
+SLUICE_SANDBOX_IMAGE=sluice-router-agent:latest
+SLUICE_ARTIFACT_CACHE_DIR=$HOME/.cache/sluice/router-artifacts
+MAX_CONCURRENT_SANDBOXES=4
+SANDBOX_TIMEOUT=45
+SLUICE_LOCAL_DEV_EXECUTION=0
+SLUICE_MOCK_ROUTER_MANIFEST_PATH=
+EOF
+
+python scripts/preflight_live.py --role both
 ```
 
-## 2. Create wallets 
+## 2. Create or select wallets
 
-Create wallets for subnet owner, subnet validator and for subnet miner.
-  
-This step creates local coldkey and hotkey pairs for your three identities: subnet owner, subnet validator and subnet miner. 
+Create or confirm the production wallets you will use for:
 
-The owner will create and control the subnet. The owner must have at least 100  TAO before the owner can run next steps. 
+- subnet owner
+- miner
+- validator
 
-The validator and miner will be registered to the subnet created by the owner. This ensures that the validator and miner can run the respective validator and miner scripts.
-
-**NOTE**: You can also use existing wallets to register. Creating new keys is shown here for reference.
-
-Create a coldkey for the owner wallet:
+Example wallet creation flow:
 
 ```bash
-btcli wallet new_coldkey --wallet.name owner
+btcli wallet new-coldkey --wallet-name sluice_owner_main
+btcli wallet new-coldkey --wallet-name sluice_miner_main
+btcli wallet new-hotkey --wallet-name sluice_miner_main --hotkey miner
+btcli wallet new-coldkey --wallet-name sluice_validator_main
+btcli wallet new-hotkey --wallet-name sluice_validator_main --hotkey validator
 ```
 
-Create a coldkey and hotkey for the subnet miner wallet:
-```bash
-btcli wallet new_coldkey --wallet.name miner
-```
-
-and
-
-```bash
-btcli wallet new_hotkey --wallet.name miner --wallet.hotkey default
-```
-
-Create a coldkey and hotkey for the subnet validator wallet:
+## 3. Create the subnet
 
 ```bash
-btcli wallet new_coldkey --wallet.name validator
+btcli subnets create \
+  --wallet-name sluice_owner_main \
+  --network finney \
+  --subnet-name Sluice \
+  --github-repo https://github.com/<your-org>/<your-repo> \
+  --subnet-contact you@example.com
 ```
 
-and
+Record the resulting `netuid`.
 
 ```bash
-btcli wallet new_hotkey --wallet.name validator --wallet.hotkey default
+export NETUID=<your-netuid>
+export NETWORK=finney
 ```
 
-## 3. Getting the price of subnet creation
+## 4. Register the miner and validator hotkeys
 
-Creating subnets on mainnet is competitive. The cost is determined by the rate at which new subnets are being registered onto the Bittensor blockchain. 
-
-By default you must have at least 100 TAO on your owner wallet to create a subnet. However, the exact amount will fluctuate based on demand. The below code shows how to get the current price of creating a subnet.
+Register the miner:
 
 ```bash
-btcli subnet lock_cost 
+btcli subnets register \
+  --netuid "${NETUID}" \
+  --wallet-name sluice_miner_main \
+  --hotkey miner \
+  --network "${NETWORK}"
 ```
 
-The above command will show:
+Register the validator:
 
 ```bash
->> Subnet lock cost: τ100.000000000
+btcli subnets register \
+  --netuid "${NETUID}" \
+  --wallet-name sluice_validator_main \
+  --hotkey validator \
+  --network "${NETWORK}"
 ```
 
-## 4. Purchasing a slot
-
-Using your TAO balance, you can register your subnet to the mainchain. This will create a new subnet on the mainchain and give you the owner permissions to it. The below command shows how to purchase a slot. 
-
-**NOTE**: Slots cost TAO to lock. You will get this TAO back when the subnet is deregistered.
+Verify:
 
 ```bash
-btcli subnet create  
+btcli subnets show --netuid "${NETUID}" --network "${NETWORK}"
 ```
 
-Enter the owner wallet name. This gives permissions to the coldkey.
+## 5. Acquire validator permit
+
+Stake on the validator hotkey:
 
 ```bash
->> Enter wallet name (default): owner # Enter your owner wallet name
->> Enter password to unlock key: # Enter your wallet password.
->> Register subnet? [y/n]: <y/n> # Select yes (y)
->> ⠇ 📡 Registering subnet...
-✅ Registered subnetwork with netuid: 1 # Your subnet netuid will show here, save this for later.
+btcli stake add \
+  --netuid "${NETUID}" \
+  --wallet-name sluice_validator_main \
+  --hotkey validator \
+  --network "${NETWORK}" \
+  --amount <tao-to-stake>
 ```
 
-## 5. (Optional) Register keys 
-
-**NOTE**: While this is not enforced, we recommend subnet owners to run a subnet validator and a subnet miner on the subnet to demonstrate proper use to the community.
-
-This step registers your subnet validator and subnet miner keys to the subnet giving them the **first two slots** on the subnet.
-
-Register your miner key to the subnet:
+Confirm the validator eventually shows a permit:
 
 ```bash
-btcli subnet recycle_register --netuid 1 --subtensor.network finney --wallet.name miner --wallet.hotkey default
+btcli wallet overview \
+  --wallet-name sluice_validator_main \
+  --hotkey validator \
+  --netuid "${NETUID}" \
+  --network "${NETWORK}"
 ```
 
-Follow the below prompts:
+## 6. Run the nodes
+
+Start the miner:
 
 ```bash
->> Enter netuid [1] (1): # Enter netuid 1 to specify the subnet you just created.
->> Continue Registration?
-  hotkey:     ...
-  coldkey:    ...
-  network:    finney [y/n]: # Select yes (y)
->> ✅ Registered
+NETUID="${NETUID}" \
+SUBTENSOR_NETWORK="${NETWORK}" \
+WALLET_NAME=sluice_miner_main \
+WALLET_HOTKEY=miner \
+AXON_PORT=8091 \
+FORCE_VALIDATOR_PERMIT=1 \
+ALLOW_NON_REGISTERED=0 \
+MOCK=0 \
+./start_miner.sh
 ```
 
-Next, register your validator key to the subnet:
+Start the validator:
 
 ```bash
-btcli subnet recycle_register --netuid 1 --subtensor.network finney --wallet.name validator --wallet.hotkey default
+NETUID="${NETUID}" \
+SUBTENSOR_NETWORK="${NETWORK}" \
+WALLET_NAME=sluice_validator_main \
+WALLET_HOTKEY=validator \
+AXON_PORT=8092 \
+MOCK=0 \
+AXON_OFF=0 \
+DISABLE_SET_WEIGHTS=0 \
+SAMPLE_SIZE=50 \
+CHALLENGE_INTERVAL=12 \
+EPOCH_LENGTH=100 \
+./start_validator.sh
 ```
 
-Follow the below prompts:
+For long-running production setups, place both processes behind a supervisor such as `systemd`, `tmux`, or another process manager and capture logs persistently.
+
+## 7. Start emissions for a subnet you own
+
+If you own the subnet, check and start its emission schedule when the network allows it:
 
 ```bash
->> Enter netuid [1] (1): # Enter netuid 1 to specify the subnet you just created.
->> Continue Registration?
-  hotkey:     ...
-  coldkey:    ...
-  network:    finney [y/n]: # Select yes (y)
->> ✅ Registered
+btcli subnets check-start --netuid "${NETUID}" --network "${NETWORK}"
+
+btcli subnets start \
+  --netuid "${NETUID}" \
+  --wallet-name sluice_owner_main \
+  --network "${NETWORK}"
 ```
 
-## 6. Check that your keys have been registered
+## 8. Verify emissions and health
 
-Check that your subnet validator key has been registered:
+Check:
 
 ```bash
-btcli wallet overview --wallet.name validator 
+btcli wallet overview --wallet-name sluice_miner_main --netuid "${NETUID}" --network "${NETWORK}"
+btcli wallet overview --wallet-name sluice_validator_main --netuid "${NETUID}" --network "${NETWORK}"
+btcli subnets show --netuid "${NETUID}" --network "${NETWORK}"
 ```
 
-The output will be similar to the below:
+Expectations:
 
-```bash
-Subnet: 1                                                                                                                                                                
-COLDKEY  HOTKEY   UID  ACTIVE  STAKE(τ)     RANK    TRUST  CONSENSUS  INCENTIVE  DIVIDENDS  EMISSION(ρ)   VTRUST  VPERMIT  UPDATED  AXON  HOTKEY_SS58                    
-miner    default  0      True   0.00000  0.00000  0.00000    0.00000    0.00000    0.00000            0  0.00000                14  none  5GTFrsEQfvTsh3WjiEVFeKzFTc2xcf…
-1        1        2            τ0.00000  0.00000  0.00000    0.00000    0.00000    0.00000           ρ0  0.00000                                                         
-                                                                          Wallet balance: τ0.0         
-```
+- miner axon is reachable and consistently returns manifests
+- validator logs show benchmarking and weight setting
+- miner incentives and validator dividends begin changing after subnet tempo and root-network support are in place
 
-Check that your subnet miner has been registered:
+## Production Guidelines
 
-```bash
-btcli wallet overview --wallet.name miner 
-```
-
-The output will be similar to the below:
-
-```bash
-Subnet: 1                                                                                                                                                                
-COLDKEY  HOTKEY   UID  ACTIVE  STAKE(τ)     RANK    TRUST  CONSENSUS  INCENTIVE  DIVIDENDS  EMISSION(ρ)   VTRUST  VPERMIT  UPDATED  AXON  HOTKEY_SS58                    
-miner    default  1      True   0.00000  0.00000  0.00000    0.00000    0.00000    0.00000            0  0.00000                14  none  5GTFrsEQfvTsh3WjiEVFeKzFTc2xcf…
-1        1        2            τ0.00000  0.00000  0.00000    0.00000    0.00000    0.00000           ρ0  0.00000                                                         
-                                                                          Wallet balance: τ0.0   
-```
-
-## 7. Run subnet miner and subnet validator
-
-Run the subnet miner:
-
-```bash
-python neurons/miner.py --netuid 1  --wallet.name miner --wallet.hotkey default --logging.debug
-```
-
-You will see the below terminal output:
-
-```bash
->> 2023-08-08 16:58:11.223 |       INFO       | Running miner for subnet: 1 on network: wss://entrypoint-finney.opentensor.ai:443 with config: ...
-```
-
-Run the subnet validator:
-
-```bash
-python neurons/validator.py --netuid 1  --wallet.name validator --wallet.hotkey default --logging.debug
-```
-
-You will see the below terminal output:
-
-```bash
->> 2023-08-08 16:58:11.223 |       INFO       | Running validator for subnet: 1 on network: wss://entrypoint-finney.opentensor.ai:443 with config: ...
-```
-
-## 8. Get emissions flowing
-
-Register to the root subnet using the `btcli`:
-
-```bash
-btcli root register 
-```
-
-Then set your weights for the subnet:
-
-```bash
-btcli root weights 
-```
-
-## 9. Stopping your nodes
-
-To stop your nodes, press CTRL + C in the terminal where the nodes are running.
-
----
+- pin artifacts and keep an internal record of the exact source that produced each manifest
+- monitor Docker health and disk usage on validators
+- restart nodes with a supervisor rather than manual shell sessions
+- treat manifest version bumps as deploy events and document them
+- keep fallback plans for artifact rollback if a router policy degrades

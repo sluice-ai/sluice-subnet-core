@@ -11,14 +11,12 @@ from sluice.models import (
     privacy_rank,
     privacy_satisfies,
 )
+from sluice.benchmarks.model_benchmarks import get_model_benchmark
 
-
-COST_WEIGHT = 0.70
-LATENCY_WEIGHT = 0.10
-RELIABILITY_WEIGHT = 0.08
-PRIVACY_WEIGHT = 0.05
-CALIBRATION_WEIGHT = 0.05
-FALLBACK_WEIGHT = 0.02
+QUALITY_WEIGHT = 0.50
+COST_WEIGHT = 0.25
+LATENCY_WEIGHT = 0.15
+RELIABILITY_WEIGHT = 0.10
 
 
 def provider_map(task: RoutingTask) -> dict[str, ProviderOption]:
@@ -112,6 +110,13 @@ def score_one(
     reference = reference_provider(task)
     if reference is None:
         return 0.0
+    # Compute dynamic model benchmark quality score based on workload type
+    quality_score = get_model_benchmark(
+        model_id=selected.model_id,
+        workload_type=task.workload_type,
+        required_capabilities=task.required_capabilities,
+        fallback_score=selected.quality_score,
+    )
 
     cost_score = min(1.0, reference.estimated_cost_usd / max(selected.estimated_cost_usd, 1e-6))
     latency_values = [provider.estimated_latency_ms for provider in feasible]
@@ -122,27 +127,13 @@ def score_one(
     )
     reliability_score = selected.reliability_score
 
-    privacy_margin = privacy_rank(selected.privacy_tier) - privacy_rank(task.privacy_requirement)
-    privacy_score = min(1.0, 0.9 + (0.05 * max(0, privacy_margin)))
+    gate = 1.0
 
-    calibration_score = np.mean(
-        [
-            _closeness(report.expected_cost_usd, selected.estimated_cost_usd),
-            _closeness(float(report.expected_latency_ms), float(selected.estimated_latency_ms)),
-            _closeness(report.expected_quality_score, selected.quality_score),
-            _closeness(report.expected_reliability_score, selected.reliability_score),
-        ]
-    )
-
-    fallback_score = _fallback_score(task, report)
-
-    total = (
-        (COST_WEIGHT * cost_score)
+    total = gate * (
+        (QUALITY_WEIGHT * quality_score)
+        + (COST_WEIGHT * cost_score)
         + (LATENCY_WEIGHT * latency_score)
         + (RELIABILITY_WEIGHT * reliability_score)
-        + (PRIVACY_WEIGHT * privacy_score)
-        + (CALIBRATION_WEIGHT * calibration_score)
-        + (FALLBACK_WEIGHT * fallback_score)
     )
     return round(max(0.0, min(1.0, float(total))), 6)
 

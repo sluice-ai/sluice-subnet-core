@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -28,6 +29,13 @@ def privacy_satisfies(required: PrivacyTier | str, actual: PrivacyTier | str) ->
     return privacy_rank(actual) >= privacy_rank(required)
 
 
+class RouterArtifactFormat(str, Enum):
+    directory = "directory"
+    tar = "tar"
+    tar_gz = "tar.gz"
+    zip = "zip"
+
+
 def _normalize_string_list(value: Any) -> list[str]:
     if value is None:
         return []
@@ -36,6 +44,65 @@ def _normalize_string_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip().lower() for item in value if str(item).strip()]
     return [str(value).strip().lower()]
+
+
+class RouterArtifactManifest(BaseModel):
+    artifact_uri: str
+    sha256: str = Field(
+        description="Lowercase SHA-256 digest for the artifact bytes or directory tree.",
+    )
+    artifact_format: RouterArtifactFormat = RouterArtifactFormat.tar_gz
+    entrypoint_path: str = "agent.py"
+    entrypoint_callable: str = "agent_main"
+    router_name: str = "sluice-router"
+    router_version: str = "0.1.0"
+    supported_capabilities: list[str] = Field(default_factory=list)
+    supported_privacy_tiers: list[str] = Field(
+        default_factory=lambda: [PrivacyTier.public.value]
+    )
+    description: str = ""
+    artifact_size_bytes: int | None = Field(default=None, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("sha256")
+    @classmethod
+    def validate_sha256(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", normalized):
+            raise ValueError("sha256 must be a 64-character lowercase hexadecimal digest.")
+        return normalized
+
+    @field_validator("entrypoint_path")
+    @classmethod
+    def validate_entrypoint_path(cls, value: str) -> str:
+        normalized = value.strip().replace("\\", "/")
+        if not normalized:
+            raise ValueError("entrypoint_path must not be empty.")
+        if normalized.startswith("/") or ".." in normalized.split("/"):
+            raise ValueError("entrypoint_path must be a safe relative path.")
+        return normalized
+
+    @field_validator("entrypoint_callable")
+    @classmethod
+    def validate_entrypoint_callable(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("entrypoint_callable must not be empty.")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", normalized):
+            raise ValueError("entrypoint_callable must be a valid Python identifier.")
+        return normalized
+
+    @field_validator("supported_capabilities", "supported_privacy_tiers", mode="before")
+    @classmethod
+    def normalize_supported_lists(cls, value: Any) -> list[str]:
+        return _normalize_string_list(value)
+
+    @field_validator("supported_privacy_tiers")
+    @classmethod
+    def validate_supported_privacy_tiers(cls, value: list[str]) -> list[str]:
+        for tier in value:
+            PrivacyTier(tier)
+        return value
 
 
 class ProviderOption(BaseModel):

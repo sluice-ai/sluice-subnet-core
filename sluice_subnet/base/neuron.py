@@ -61,9 +61,10 @@ class BaseNeuron(ABC):
         return ttl_get_block(self)
 
     def __init__(self, config=None):
-        base_config = copy.deepcopy(config or BaseNeuron.config())
-        self.config = self.config()
-        self.config.merge(base_config)
+        default_config = self.__class__.config()
+        self.config = copy.deepcopy(default_config)
+        if config is not None:
+            self.config.merge(copy.deepcopy(config))
         self.check_config(self.config)
 
         # Set up logging with the provided configuration.

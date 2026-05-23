@@ -1,7 +1,6 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
-# TODO(developer): Set your name
-# Copyright © 2023 <your name>
+# Copyright © 2026 Sluice
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 # documentation files (the “Software”), to deal in the Software without restriction, including without limitation
@@ -23,8 +22,10 @@ import numpy as np
 import asyncio
 import argparse
 import threading
+import time
 import bittensor as bt
 
+from pathlib import Path
 from typing import List, Union
 from traceback import print_exception
 
@@ -75,8 +76,12 @@ class BaseValidatorNeuron(BaseNeuron):
         else:
             bt.logging.warning("axon off, not serving ip to chain.")
 
-        # Create asyncio event loop to manage async tasks.
-        self.loop = asyncio.get_event_loop()
+        # Create or reuse an event loop to manage async tasks.
+        try:
+            self.loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
 
         # Instantiate runners
         self.should_exit: bool = False
@@ -114,7 +119,28 @@ class BaseValidatorNeuron(BaseNeuron):
             self.forward()
             for _ in range(self.config.neuron.num_concurrent_forwards)
         ]
-        await asyncio.gather(*coroutines)
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                bt.logging.error(f"Forward pass failed: {result}")
+                bt.logging.debug(
+                    str(print_exception(type(result), result, result.__traceback__))
+                )
+
+    def _sleep_until_next_challenge(self, step_started_at: float):
+        interval = float(self.config.neuron.challenge_interval)
+        if interval <= 0:
+            return
+
+        elapsed = time.monotonic() - step_started_at
+        sleep_for = max(0.0, interval - elapsed)
+        if sleep_for <= 0:
+            return
+
+        bt.logging.info(f"Sleeping {sleep_for:.2f}s before next challenge round.")
+        deadline = time.monotonic() + sleep_for
+        while not self.should_exit and time.monotonic() < deadline:
+            time.sleep(max(0.0, min(1.0, deadline - time.monotonic())))
 
     def run(self):
         """
@@ -143,7 +169,8 @@ class BaseValidatorNeuron(BaseNeuron):
 
         # This loop maintains the validator's operations until intentionally stopped.
         try:
-            while True:
+            while not self.should_exit:
+                step_started_at = time.monotonic()
                 bt.logging.info(f"step({self.step}) block({self.block})")
 
                 # Run multiple forwards concurrently.
@@ -154,9 +181,16 @@ class BaseValidatorNeuron(BaseNeuron):
                     break
 
                 # Sync metagraph and potentially set weights.
-                self.sync()
+                try:
+                    self.sync()
+                except Exception as err:
+                    bt.logging.error(f"Error during validator sync: {str(err)}")
+                    bt.logging.debug(
+                        str(print_exception(type(err), err, err.__traceback__))
+                    )
 
                 self.step += 1
+                self._sleep_until_next_challenge(step_started_at)
 
         # If someone intentionally stops the validator, it'll safely terminate operations.
         except KeyboardInterrupt:
@@ -377,10 +411,24 @@ class BaseValidatorNeuron(BaseNeuron):
 
     def load_state(self):
         """Loads the state of the validator from a file."""
-        bt.logging.info("Loading validator state.")
+        state_path = Path(self.config.neuron.full_path) / "state.npz"
+        if not state_path.exists():
+            bt.logging.info("No validator state found; starting fresh.")
+            return
 
-        # Load the state of the validator from file.
-        state = np.load(self.config.neuron.full_path + "/state.npz")
-        self.step = state["step"]
-        self.scores = state["scores"]
-        self.hotkeys = state["hotkeys"]
+        bt.logging.info(f"Loading validator state from {state_path}.")
+        try:
+            state = np.load(state_path)
+        except Exception as err:
+            bt.logging.warning(f"Could not load validator state; starting fresh: {err}")
+            return
+
+        self.step = int(state["step"])
+        loaded_scores = np.asarray(state["scores"], dtype=np.float32)
+        if loaded_scores.size != int(self.metagraph.n):
+            resized_scores = np.zeros(int(self.metagraph.n), dtype=np.float32)
+            copy_len = min(loaded_scores.size, resized_scores.size)
+            resized_scores[:copy_len] = loaded_scores[:copy_len]
+            loaded_scores = resized_scores
+        self.scores = loaded_scores
+        self.hotkeys = list(state["hotkeys"])

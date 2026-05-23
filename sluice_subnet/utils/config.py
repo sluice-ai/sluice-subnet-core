@@ -195,6 +195,16 @@ def add_validator_args(cls, parser):
     )
 
     parser.add_argument(
+        "--neuron.challenge_interval",
+        type=float,
+        help=(
+            "Minimum seconds between validator challenge rounds. "
+            "Use 0 to challenge again immediately."
+        ),
+        default=12,
+    )
+
+    parser.add_argument(
         "--neuron.sample_size",
         type=int,
         help="The number of miners to query in a single step.",
@@ -257,4 +267,12 @@ def config(cls):
     bt.logging.add_args(parser)
     bt.Axon.add_args(parser)
     cls.add_args(parser)
-    return bt.Config(parser)
+    previous_cli_parse_flag = os.environ.get("BT_NO_PARSE_CLI_ARGS")
+    os.environ["BT_NO_PARSE_CLI_ARGS"] = "false"
+    try:
+        return bt.Config(parser)
+    finally:
+        if previous_cli_parse_flag is None:
+            os.environ.pop("BT_NO_PARSE_CLI_ARGS", None)
+        else:
+            os.environ["BT_NO_PARSE_CLI_ARGS"] = previous_cli_parse_flag

@@ -1,62 +1,96 @@
 # Sluice Subnet
 
-Sluice is a Bittensor subnet for AI routing. Miners compete by publishing routing agents, and validators benchmark those agents against routing tasks that encode cost, latency, quality, and privacy constraints.
+Sluice is a Bittensor subnet for competitive AI routing.
 
-The repo is now focused fully on the Sluice routing brief:
+This repository is the subnet control plane:
 
-- miners register a router repo instead of returning a one-off answer
-- validators sandbox and execute the router against benchmark tasks
-- rewards favor the cheapest feasible route that still satisfies task requirements
-- the validator works out of the box with bundled local benchmark tasks, while still supporting a remote task API later
+- miners publish pinned router artifacts plus metadata
+- validators fetch, verify, sandbox, and score those artifacts
+- validator weights drive miner incentives and validator dividends
+- live customer traffic is expected to live in a separate serving system
 
-## Architecture
+## What Lives Here
 
-Core pieces:
+- `neurons/`: miner and validator entrypoints
+- `sluice/`: router artifact, sandbox, benchmark, and scoring logic
+- `sluice_subnet/`: shared subnet framework, protocol, and mock tooling
+- `agent/`: sample router policy and sandbox runner image
+- `tests/`: regression tests for the artifact and scoring flow
+- `docs/`: developer and operator runbooks
 
-- `neurons/miner.py`: miner neuron that advertises a router repository URL and capability metadata
-- `neurons/validator.py`: validator neuron that builds the sandbox image and scores miner routers
-- `sluice_subnet/protocol.py`: synapse definition used between miners and validators
-- `sluice/benchmark_client.py`: local-first benchmark task loader with optional remote API support
-- `sluice/scorer.py`: deterministic routing scorer
-- `sluice/sandbox.py`: validator-side sandbox that clones and executes miner routing agents
-- `agent/runner.py`: minimal runtime baked into the validator sandbox image
-- `agent/agent.py`: sample router agent you can use as a first-party baseline
+## Documentation Map
 
-## Competitive Approach
-
-The fastest way to become competitive on a routing subnet is to score real routing policies, not self-reported claims. This scaffold does that by:
-
-- letting miners ship routing logic as code
-- evaluating that code against the exact same task payload on the validator side
-- enforcing a safety boundary with a read-only, no-network sandbox
-- making reward primarily cost-driven, with smaller bonuses for latency headroom, reliability, privacy fit, calibration, and valid fallbacks
-
-This matches the Sluice idea from your PDF: validators benchmark proposed routes and reward the cheapest route that still meets requirements.
+- [Developer Guide](docs/developer_guide.md)
+- [Miner and Validator Guide](docs/miner_validator_guide.md)
+- [Run on Staging / Local Chain](docs/running_on_staging.md)
+- [Run on Testnet](docs/running_on_testnet.md)
+- [Run on Mainnet](docs/running_on_mainnet.md)
+- [Operating a Sluice-like App](docs/operating_a_sluice_like_app.md)
 
 ## Quick Start
 
-1. Install dependencies.
+Install dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-2. Copy `.env.example` into `.env.miner` and `.env.validator`.
+Prepare local env files:
 
-3. Set `ROUTER_REPO_URL` in `.env.miner`.
+```bash
+cp .env.example .env.miner
+cp .env.example .env.validator
+```
 
-For local single-machine testing, `file://` works. The validator sandbox will also accept repos where the agent lives at either `agent.py` in the repo root or `agent/agent.py`, so you can point a first-party miner at this repo during bootstrap if needed.
+Build the sample router artifact:
 
-4. Run the miner and validator.
+```bash
+python -m sluice.router.builder \
+  --source-dir agent \
+  --output-dir dist/router \
+  --router-name sluice-baseline-router \
+  --router-version 0.1.0 \
+  --capability json-mode \
+  --privacy-tier public \
+  --description "Baseline local router artifact for Sluice."
+```
+
+Point the miner at the manifest:
+
+```bash
+export ROUTER_MANIFEST_PATH="$(pwd)/dist/router/sluice-baseline-router-0.1.0.manifest.json"
+```
+
+Run the local smoke flow without Docker or live chain registration:
+
+```bash
+python scripts/smoke_subnet_flow.py
+```
+
+Run the subnet processes:
 
 ```bash
 python neurons/miner.py --netuid <your-netuid>
 python neurons/validator.py --netuid <your-netuid>
 ```
 
-## Miner Contract
+## Subnet Flow
 
-A miner advertises a git repo containing a routing agent with:
+1. A miner builds a router artifact from private source code.
+2. The miner publishes a manifest with the artifact URI, digest, entrypoint, version, capabilities, and privacy tiers.
+3. A validator samples hidden routing tasks.
+4. The validator queries miners for manifests.
+5. The validator downloads or resolves the exact artifact bytes, verifies the digest, and caches the artifact.
+6. The validator executes the router in the sandbox and scores the result.
+7. The validator updates miner weights on-chain.
+
+The core design decision is:
+
+`validators benchmark exact artifact bytes, not moving repo heads`
+
+## Router Contract
+
+Each router artifact must expose a callable such as:
 
 ```python
 def agent_main(task: dict) -> dict:
@@ -81,11 +115,26 @@ Optional metadata fields:
 - `agent_version`
 - `policy_tags`
 
-## Local Benchmarks
+## Manifest Contract
 
-If `SLUICE_TASK_API` is unset, validators use bundled synthetic routing tasks from `sluice/benchmarks/tasks.json`. That means you can boot the subnet and test miner/validator behavior before you stand up any benchmark API.
+The announced router manifest includes:
+
+- `artifact_uri`
+- `sha256`
+- `artifact_format`
+- `entrypoint_path`
+- `entrypoint_callable`
+- `router_name`
+- `router_version`
+- `supported_capabilities`
+- `supported_privacy_tiers`
+- `description`
+
+See [agent/router_manifest.template.json](agent/router_manifest.template.json).
 
 ## Notes
 
-- Docker is required on the validator machine because the validator executes miner routing agents in a sandbox.
-- Set `SLUICE_SKIP_SANDBOX_BUILD=1` if you only want to run import-level or unit-test validation without building the Docker image.
+- Docker is required on validator machines for real sandbox execution.
+- Validators cache artifacts under `SLUICE_ARTIFACT_CACHE_DIR` or `~/.cache/sluice/router-artifacts`.
+- Bundled benchmark tasks live in `sluice/benchmarks/tasks.json` and are used when `SLUICE_TASK_API` is unset.
+- `GEMINI_API_KEY` is optional and is not used by validator benchmarking in this repository.

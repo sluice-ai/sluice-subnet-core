@@ -58,5 +58,5 @@ def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray:
             [uid for uid in avail_uids if uid not in candidate_uids],
             k - len(candidate_uids),
         )
-    uids = np.array(random.sample(available_uids, k))
+    uids = np.array(random.sample(available_uids, k), dtype=np.int64)
     return uids

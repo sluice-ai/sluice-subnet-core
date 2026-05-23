@@ -129,6 +129,7 @@ env.bak/
 venv.bak/
 .env.miner
 .env.validator
+.dependencies_installed
 
 
 # Spyder project settings

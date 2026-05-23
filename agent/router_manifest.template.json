@@ -1,0 +1,16 @@
+{
+  "artifact_uri": "file:///absolute/path/to/router-artifact.tar.gz",
+  "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "artifact_format": "tar.gz",
+  "entrypoint_path": "agent.py",
+  "entrypoint_callable": "agent_main",
+  "router_name": "sluice-router",
+  "router_version": "0.1.0",
+  "supported_capabilities": [
+    "json-mode"
+  ],
+  "supported_privacy_tiers": [
+    "public"
+  ],
+  "description": "Pinned router artifact manifest template."
+}

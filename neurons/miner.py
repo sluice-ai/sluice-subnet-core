@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 import typing
 from pathlib import Path
 
@@ -12,7 +11,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import sluice_subnet
-from sluice.models import RoutingTask
+from sluice.models import RouterArtifactFormat, RouterArtifactManifest, RoutingTask
+from sluice.router import load_manifest_file
 from sluice_subnet.base.miner import BaseMinerNeuron
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env.miner")
@@ -21,23 +21,50 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env.miner")
 class Miner(BaseMinerNeuron):
     def __init__(self, config=None):
         super().__init__(config=config)
-        self.router_repo_url = os.getenv("ROUTER_REPO_URL", "").strip()
-        if not self.router_repo_url:
-            raise EnvironmentError("ROUTER_REPO_URL must be set in .env.miner or the environment.")
-
-        self.router_label = os.getenv("ROUTER_LABEL", "sluice-router").strip()
-        self.router_version = os.getenv("ROUTER_VERSION", "0.1.0").strip()
+        self.router_manifest = self._load_router_manifest()
+        self.router_label = os.getenv(
+            "ROUTER_LABEL", self.router_manifest.router_name
+        ).strip()
+        self.router_version = self.router_manifest.router_version
         self.router_summary = os.getenv(
             "ROUTER_SUMMARY",
-            "Cost-first feasible routing policy for Sluice tasks.",
+            self.router_manifest.description or "Pinned routing policy artifact for Sluice tasks.",
         ).strip()
-        self.router_capabilities = self._split_env("ROUTER_SUPPORTED_CAPABILITIES")
-        self.supported_privacy_tiers = self._split_env("ROUTER_SUPPORTED_PRIVACY_TIERS")
+        self.router_capabilities = self.router_manifest.supported_capabilities
+        self.supported_privacy_tiers = self.router_manifest.supported_privacy_tiers
 
     @staticmethod
     def _split_env(name: str) -> list[str]:
         raw_value = os.getenv(name, "")
         return [item.strip().lower() for item in raw_value.split(",") if item.strip()]
+
+    def _load_router_manifest(self) -> RouterArtifactManifest:
+        manifest_path = os.getenv("ROUTER_MANIFEST_PATH", "").strip()
+        if manifest_path:
+            return load_manifest_file(manifest_path)
+
+        artifact_uri = os.getenv("ROUTER_ARTIFACT_URI", "").strip()
+        artifact_sha256 = os.getenv("ROUTER_ARTIFACT_SHA256", "").strip().lower()
+        if not artifact_uri or not artifact_sha256:
+            raise EnvironmentError(
+                "Set ROUTER_MANIFEST_PATH or provide ROUTER_ARTIFACT_URI plus "
+                "ROUTER_ARTIFACT_SHA256 in .env.miner or the environment."
+            )
+
+        return RouterArtifactManifest(
+            artifact_uri=artifact_uri,
+            sha256=artifact_sha256,
+            artifact_format=RouterArtifactFormat(
+                os.getenv("ROUTER_ARTIFACT_FORMAT", RouterArtifactFormat.tar_gz.value)
+            ),
+            entrypoint_path=os.getenv("ROUTER_ENTRYPOINT_PATH", "agent.py").strip(),
+            entrypoint_callable=os.getenv("ROUTER_ENTRYPOINT_CALLABLE", "agent_main").strip(),
+            router_name=os.getenv("ROUTER_LABEL", "sluice-router").strip(),
+            router_version=os.getenv("ROUTER_VERSION", "0.1.0").strip(),
+            supported_capabilities=self._split_env("ROUTER_SUPPORTED_CAPABILITIES"),
+            supported_privacy_tiers=self._split_env("ROUTER_SUPPORTED_PRIVACY_TIERS") or ["public"],
+            description=os.getenv("ROUTER_SUMMARY", "").strip(),
+        )
 
     def _supports_task(self, synapse: sluice_subnet.protocol.RoutePlanSynapse) -> bool:
         if not synapse.task_json:
@@ -55,7 +82,8 @@ class Miner(BaseMinerNeuron):
     async def forward(
         self, synapse: sluice_subnet.protocol.RoutePlanSynapse
     ) -> sluice_subnet.protocol.RoutePlanSynapse:
-        synapse.router_repo_url = self.router_repo_url
+        synapse.router_manifest_json = self.router_manifest.model_dump_json()
+        synapse.router_repo_url = self.router_manifest.artifact_uri
         synapse.router_version = self.router_version
         synapse.router_summary = self.router_summary
         synapse.router_capabilities = self.router_capabilities
@@ -77,6 +105,15 @@ class Miner(BaseMinerNeuron):
 
         uid = self.metagraph.hotkeys.index(hotkey)
         if self.config.blacklist.force_validator_permit and not self.metagraph.validator_permit[uid]:
+            validator_permit_count = sum(
+                bool(has_permit) for has_permit in self.metagraph.validator_permit
+            )
+            if validator_permit_count == 0:
+                bt.logging.warning(
+                    "No validator permits are active on this subnet yet; "
+                    f"allowing registered hotkey {hotkey} for bootstrap."
+                )
+                return False, "Bootstrap mode: no validator permits on subnet"
             return True, "Non-validator hotkey"
 
         return False, "Hotkey recognized"
@@ -96,10 +133,8 @@ class Miner(BaseMinerNeuron):
 
 
 def main():
-    with Miner() as miner:
-        while True:
-            bt.logging.info(f"Miner running... {time.time()}")
-            time.sleep(5)
+    miner = Miner()
+    miner.run()
 
 
 if __name__ == "__main__":

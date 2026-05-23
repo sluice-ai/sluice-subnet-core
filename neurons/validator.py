@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 from pathlib import Path
 
 import bittensor as bt
@@ -35,10 +34,8 @@ class Validator(BaseValidatorNeuron):
 
 
 def main():
-    with Validator() as validator:
-        while True:
-            bt.logging.info(f"Validator running... {time.time()}")
-            time.sleep(5)
+    validator = Validator()
+    validator.run()
 
 
 if __name__ == "__main__":

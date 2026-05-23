@@ -1,340 +1,221 @@
-# Running Subnet Locally
+# Run on Staging
 
-This tutorial will guide you through:
+This guide shows how to run the Sluice subnet against a local Bittensor chain for development.
 
-- Setting up a local blockchain that is not connected to either Bittensor testchain or mainchain
-- Creating a subnet
-- Run your incentive mechanism on the subnet.
+Use this path first if you are changing protocol, scoring, sandbox, or registration behavior.
 
-## Local blockchain vs local subtensor node 
+For role-specific expectations, see [Miner and Validator Guide](miner_validator_guide.md).
 
-Running a local blockchain is sometimes synonymously referred as running on staging. This is **different** from running a local subtensor node that connects to the Bittensor mainchain. 
+## What This Runbook Covers
 
-A local subtensor node will connect to the mainchain and sync with the mainchain, giving you your own access point to the mainchain. 
-
-Running a local blockchain spins up two authority nodes locally, not connected to any other nodes or testchain or mainchain. This tutorial is for running a local blockchain. 
+- building a local Subtensor chain
+- registering a subnet locally
+- registering miner and validator hotkeys
+- running the Sluice miner and validator against that local chain
 
 ## Prerequisites
 
-Before proceeding further, make sure that you have installed Bittensor. See the below instructions:
+- Python environment with this repo installed
+- Docker on the validator machine
+- Rust toolchain and Subtensor build dependencies
+- `btcli`
 
-- [Install `bittensor`](https://github.com/opentensor/bittensor#install).
+The exact `btcli` argument spellings can vary by release. If your local CLI differs, prefer the form shown in `btcli --help`.
 
-After installing `bittensor`, proceed as below:
+## 1. Start a local Subtensor chain
 
-## 1. Install Substrate dependencies
-
-Begin by installing the required dependencies for running a Substrate node.
-
-Update your system packages:
-
-```bash
-sudo apt update 
-```
-
-Install additional required libraries and tools
-
-```bash
-sudo apt install --assume-yes make build-essential git clang curl libssl-dev llvm libudev-dev protobuf-compiler
-```
-
-## 2. Install Rust and Cargo
-
-Rust is the programming language used in Substrate development. Cargo is Rust package manager.
-
-Install rust and cargo:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Update your shell's source to include Cargo's path:
-
-```bash
-source "$HOME/.cargo/env"
-```
-
-## 3. Clone the subtensor repository
-
-This step fetches the subtensor codebase to your local machine.
+Clone and build Subtensor:
 
 ```bash
 git clone https://github.com/opentensor/subtensor.git
-```
-
-## 4. Setup Rust
-
-This step ensures that you have the nightly toolchain and the WebAssembly (wasm) compilation target. Note that this step will run the subtensor chain on your terminal directly, hence we advise that you run this as a background process using PM2 or other software.
-
-Update to the nightly version of Rust:
-
-```bash
-./subtensor/scripts/init.sh
-```
-
-## 5. Initialize 
-
-These steps initialize your local subtensor chain in development mode. These commands will set up and run a local subtensor.
-
-Build the binary with the faucet feature enabled:
-
-```bash
+cd subtensor
+./scripts/init.sh
 cargo build -p node-subtensor --profile production --features pow-faucet
+BUILD_BINARY=0 ./scripts/localnet.sh
 ```
 
-**NOTE**: The `--features pow-faucet` option in the above is required if we want to use the command `btcli wallet faucet` [See the below Mint tokens step](#8-mint-tokens-from-faucet).
+Leave the chain running in a dedicated terminal.
 
-Next, run the localnet script and turn off the attempt to build the binary (as we have already done this above):
+This guide assumes the local chain endpoint is:
 
 ```bash
-BUILD_BINARY=0 ./scripts/localnet.sh 
+ws://127.0.0.1:9946
 ```
 
-**NOTE**: Watch for any build or initialization outputs in this step. If you are building the project for the first time, this step will take a while to finish building, depending on your hardware.
+## 2. Prepare this repository
 
-## 6. Install subnet template
-
-`cd` to your project directory and clone the bittensor subnet template repository:
+In a second terminal:
 
 ```bash
-git clone https://github.com/opentensor/bittensor-subnet-template.git
+cd /path/to/sluice-subnet-core
+python -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env.miner
+cp .env.example .env.validator
 ```
 
-Navigate to the cloned repository:
+Build the sample router artifact:
 
 ```bash
-cd bittensor-subnet-template
+python -m sluice.router.builder \
+  --source-dir agent \
+  --output-dir dist/router \
+  --router-name sluice-baseline-router \
+  --router-version 0.1.0 \
+  --capability json-mode \
+  --privacy-tier public
 ```
 
-Install the bittensor-subnet-template Python package:
+Point the miner at the manifest:
 
 ```bash
-python -m pip install -e .
+export ROUTER_MANIFEST_PATH="$(pwd)/dist/router/sluice-baseline-router-0.1.0.manifest.json"
 ```
 
-## 7. Set up wallets
+## 3. Create wallets
 
-You will need wallets for the different roles, i.e., subnet owner, subnet validator and subnet miner, in the subnet. 
-
-- The owner wallet creates and controls the subnet. 
-- The validator and miner will be registered to the subnet created by the owner. This ensures that the validator and miner can run the respective validator and miner scripts.
-
-Create a coldkey for the owner role:
+Create coldkeys and hotkeys for the subnet owner, miner, and validator:
 
 ```bash
 btcli wallet new_coldkey --wallet.name owner
-```
-
-Set up the miner's wallets:
-
-```bash
 btcli wallet new_coldkey --wallet.name miner
-```
-
-```bash
 btcli wallet new_hotkey --wallet.name miner --wallet.hotkey default
-```
-
-Set up the validator's wallets:
-
-```bash
 btcli wallet new_coldkey --wallet.name validator
-```
-```bash
 btcli wallet new_hotkey --wallet.name validator --wallet.hotkey default
 ```
 
-## 8. Mint tokens from faucet
+## 4. Fund local wallets
 
-You will need tokens to initialize the intentive mechanism on the chain as well as for registering the subnet. 
-
-Run the following commands to mint faucet tokens for the owner and for the validator.
-
-Mint faucet tokens for the owner:
+Mint funds from the local faucet:
 
 ```bash
-btcli wallet faucet --wallet.name owner --subtensor.chain_endpoint ws://127.0.0.1:9946 
+btcli wallet faucet --wallet.name owner --subtensor.chain_endpoint ws://127.0.0.1:9946
+btcli wallet faucet --wallet.name validator --subtensor.chain_endpoint ws://127.0.0.1:9946
+btcli wallet faucet --wallet.name miner --subtensor.chain_endpoint ws://127.0.0.1:9946
 ```
 
-You will see:
+## 5. Create the subnet
 
 ```bash
->> Balance: τ0.000000000 ➡ τ100.000000000
+btcli subnet create --wallet.name owner --subtensor.chain_endpoint ws://127.0.0.1:9946
 ```
 
-Mint tokens for the validator:
+Record the `netuid` you receive. The examples below use `1`.
+
+## 6. Register the miner and validator hotkeys
+
+Register the miner:
 
 ```bash
-btcli wallet faucet --wallet.name validator --subtensor.chain_endpoint ws://127.0.0.1:9946 
+btcli subnets register \
+  --netuid 1 \
+  --wallet-name miner \
+  --hotkey default \
+  --network ws://127.0.0.1:9946
 ```
 
-You will see:
+Register the validator:
 
 ```bash
->> Balance: τ0.000000000 ➡ τ100.000000000
+btcli subnets register \
+  --netuid 1 \
+  --wallet-name validator \
+  --hotkey default \
+  --network ws://127.0.0.1:9946
 ```
 
-## 9. Create a subnet
-
-The below commands establish a new subnet on the local chain. The cost will be exactly τ1000.000000000 for the first subnet you create and you'll have to run the faucet several times to get enough tokens.
+Verify registration:
 
 ```bash
-btcli subnet create --wallet.name owner --subtensor.chain_endpoint ws://127.0.0.1:9946 
+btcli subnet show --netuid 1 --network ws://127.0.0.1:9946
 ```
 
-You will see:
+## 7. Acquire validator permit
+
+Stake on the validator hotkey:
 
 ```bash
->> Your balance is: τ200.000000000
->> Do you want to register a subnet for τ1000.000000000? [y/n]: 
->> Enter password to unlock key: [YOUR_PASSWORD]
->> ✅ Registered subnetwork with netuid: 1
+btcli stake add \
+  --netuid 1 \
+  --wallet-name validator \
+  --hotkey default \
+  --partial \
+  --network ws://127.0.0.1:9946
 ```
 
-**NOTE**: The local chain will now have a default `netuid` of 1. The second registration will create a `netuid` 2 and so on, until you reach the subnet limit of 8. If you register more than 8 subnets, then a subnet with the least staked TAO will be replaced by the 9th subnet you register.
-
-## 10. Register keys
-
-Register your subnet validator and subnet miner on the subnet. This gives your two keys unique slots on the subnet. The subnet has a current limit of 128 slots.
-
-Register the subnet miner:
-
-```bash
-btcli subnet register --wallet.name miner --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-Follow the below prompts:
-
-```bash
->> Enter netuid [1] (1): 1
->> Continue Registration? [y/n]: y
->> ✅ Registered
-```
-
-Register the subnet validator:
-
-```bash
-
-btcli subnet register --wallet.name validator --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-Follow the below prompts:
-
-```
->> Enter netuid [1] (1): 1
->> Continue Registration? [y/n]: y
->> ✅ Registered
-```
-
-## 11. Add stake 
-
-This step bootstraps the incentives on your new subnet by adding stake into its incentive mechanism.
-
-```bash
-btcli stake add --wallet.name validator --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-Follow the below prompts:
-
-```bash
->> Stake all Tao from account: 'validator'? [y/n]: y
->> Stake:
-    τ0.000000000 ➡ τ100.000000000
-```
-
-## 12. Validate key registrations
-
-Verify that both the miner and validator keys are successfully registered:
-
-```bash
-btcli subnet list --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-You will see the `2` entry under `NEURONS` column for the `NETUID` of 1, indicating that you have registered a validator and a miner in this subnet:
-
-```bash
-NETUID  NEURONS  MAX_N   DIFFICULTY  TEMPO  CON_REQ  EMISSION  BURN(τ)  
-   1        2     256.00   10.00 M    1000    None     0.00%    τ1.00000 
-   2      128    
-```
-
-See the subnet validator's registered details:
+Confirm the validator eventually shows a permit in wallet or subnet views:
 
 ```bash
 btcli wallet overview --wallet.name validator --subtensor.chain_endpoint ws://127.0.0.1:9946
 ```
 
-You will see:
+## 8. Run the nodes
 
-```
-Subnet: 1                                                                                                                                                                
-COLDKEY  HOTKEY   UID  ACTIVE  STAKE(τ)     RANK    TRUST  CONSENSUS  INCENTIVE  DIVIDENDS  EMISSION(ρ)   VTRUST  VPERMIT  UPDATED  AXON  HOTKEY_SS58                    
-miner    default  0      True   100.00000  0.00000  0.00000    0.00000    0.00000    0.00000            0  0.00000                14  none  5GTFrsEQfvTsh3WjiEVFeKzFTc2xcf…
-1        1        2            τ100.00000  0.00000  0.00000    0.00000    0.00000    0.00000           ρ0  0.00000                                                         
-                                                                          Wallet balance: τ0.0         
+Start the miner:
+
+```bash
+BT_NO_PARSE_CLI_ARGS=false python neurons/miner.py \
+  --netuid 1 \
+  --wallet.name miner \
+  --wallet.hotkey default \
+  --subtensor.chain_endpoint ws://127.0.0.1:9946
 ```
 
-See the subnet miner's registered details:
+Start the validator in another terminal:
+
+```bash
+BT_NO_PARSE_CLI_ARGS=false python neurons/validator.py \
+  --netuid 1 \
+  --wallet.name validator \
+  --wallet.hotkey default \
+  --subtensor.chain_endpoint ws://127.0.0.1:9946
+```
+
+## 9. Enable local emissions
+
+The subnet still needs root-network support before miner and validator emissions show up.
+
+Register the validator on root:
+
+```bash
+btcli root register \
+  --wallet.name validator \
+  --wallet.hotkey default \
+  --subtensor.chain_endpoint ws://127.0.0.1:9946
+```
+
+Then boost the subnet on the local root network:
+
+```bash
+btcli root boost \
+  --netuid 1 \
+  --increase 1 \
+  --wallet.name validator \
+  --wallet.hotkey default \
+  --subtensor.chain_endpoint ws://127.0.0.1:9946
+```
+
+## 10. Verify emissions
+
+Once the validator has begun setting weights and a subnet tempo has elapsed, check both roles:
 
 ```bash
 btcli wallet overview --wallet.name miner --subtensor.chain_endpoint ws://127.0.0.1:9946
+btcli wallet overview --wallet.name validator --subtensor.chain_endpoint ws://127.0.0.1:9946
+btcli subnet show --netuid 1 --network ws://127.0.0.1:9946
 ```
 
-You will see:
+## Troubleshooting
 
-```bash
-Subnet: 1                                                                                                                                                                
-COLDKEY  HOTKEY   UID  ACTIVE  STAKE(τ)     RANK    TRUST  CONSENSUS  INCENTIVE  DIVIDENDS  EMISSION(ρ)   VTRUST  VPERMIT  UPDATED  AXON  HOTKEY_SS58                    
-miner    default  1      True   0.00000  0.00000  0.00000    0.00000    0.00000    0.00000            0  0.00000                14  none  5GTFrsEQfvTsh3WjiEVFeKzFTc2xcf…
-1        1        2            τ0.00000  0.00000  0.00000    0.00000    0.00000    0.00000           ρ0  0.00000                                                         
-                                                                          Wallet balance: τ0.0   
+If the miner starts but earns nothing:
 
-```
+- confirm the miner hotkey is registered on the correct `netuid`
+- confirm the router manifest path is valid
+- confirm the validator is receiving non-empty miner manifests
 
-## 13. Run subnet miner and subnet validator
+If the validator starts but cannot set weights:
 
-Run the subnet miner and subnet validator. Make sure to specify your subnet parameters.
-
-Run the subnet miner:
-
-```bash
-python neurons/miner.py --netuid 1 --subtensor.chain_endpoint ws://127.0.0.1:9946 --wallet.name miner --wallet.hotkey default --logging.debug
-```
-
-Run the subnet validator:
-
-```bash
-python neurons/validator.py --netuid 1 --subtensor.chain_endpoint ws://127.0.0.1:9946 --wallet.name validator --wallet.hotkey default --logging.debug
-```
-
-## 14. Set weights for your subnet
-
-Register a validator on the root subnet and boost to set weights for your subnet. This is a necessary step to ensure that the subnet is able to receive emmissions.
-
-### Register your validator on the root subnet
-
-```bash
-btcli root register --wallet.name validator --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-### Boost your subnet on the root subnet
-```bash
-btcli root boost --netuid 1 --increase 1 --wallet.name validator --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-## 15. Verify your incentive mechanism
-
-After a few blocks the subnet validator will set weights. This indicates that the incentive mechanism is active. Then after a subnet tempo elapses (360 blocks or 72 minutes) you will see your incentive mechanism beginning to distribute TAO to the subnet miner.
-
-```bash
-btcli wallet overview --wallet.name miner --subtensor.chain_endpoint ws://127.0.0.1:9946
-```
-
-## Ending your session
-
-To halt your nodes:
-```bash
-# Press CTRL + C keys in the terminal.
-```
-
----
+- confirm the validator hotkey has a permit
+- confirm enough miners are serving
+- confirm Docker is working if you are not in local-dev execution mode

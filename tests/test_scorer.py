@@ -1,5 +1,9 @@
+import numpy as np
+
 from sluice.models import RoutingExecutionReport, RoutingTask
 from sluice.scorer import reference_provider, score_one
+from sluice.benchmarks.model_benchmarks import get_model_benchmark
+from sluice_subnet.validator.reward import get_rewards
 
 
 TASK = RoutingTask.model_validate(
@@ -57,7 +61,7 @@ def test_reference_provider_picks_cheapest_feasible_route():
     assert reference_provider(TASK).provider_id == "cheap-feasible"
 
 
-def test_score_rewards_cheapest_feasible_route():
+def test_score_rewards_quality_and_latency_centric_route():
     best = RoutingExecutionReport(
         task_id=TASK.task_id,
         selected_provider_id="cheap-feasible",
@@ -81,7 +85,10 @@ def test_score_rewards_cheapest_feasible_route():
         rationale="More expensive route.",
     )
 
-    assert score_one(best, TASK) > score_one(premium, TASK) > 0.0
+    # Under new weights: 50% Quality, 25% Cost, 15% Latency, 10% Reliability
+    # premium score: 0.5*0.9 + 0.25*(0.003/0.009) + 0.15*1.0 + 0.10*0.97 = 0.780333
+    # cheap score: 0.5*0.74 + 0.25*1.0 + 0.15*0.0 + 0.10*0.88 = 0.708
+    assert score_one(premium, TASK) > score_one(best, TASK) > 0.0
 
 
 def test_infeasible_route_scores_zero():
@@ -98,3 +105,34 @@ def test_infeasible_route_scores_zero():
     )
 
     assert score_one(infeasible, TASK) == 0.0
+
+
+def test_empty_reward_batch_is_safe():
+    rewards = get_rewards(None, [], TASK)
+
+    assert rewards.size == 0
+    assert rewards.dtype == np.float32
+
+
+def test_model_benchmarks_code_vs_text():
+    # Chat workload: should return MMLU score
+    llama_chat = get_model_benchmark("llama-3.3-70b", workload_type="chat")
+    assert llama_chat == 0.860
+
+    # Code workload: should return a blend of SWE-bench and HumanEval (0.5 * 0.23 + 0.5 * 0.80 = 0.515)
+    llama_code = get_model_benchmark("llama-3.3-70b", workload_type="code")
+    assert llama_code == 0.515
+
+    # Codegen capability fallback: should return code blend
+    llama_capability = get_model_benchmark("llama-3.3-70b", workload_type="chat", required_capabilities=["codegen"])
+    assert llama_capability == 0.515
+
+
+def test_model_benchmarks_fallback_behavior():
+    # Unknown model with no fallback: should return defaults
+    unknown_no_fallback = get_model_benchmark("completely-unknown-model-xyz", workload_type="chat")
+    assert unknown_no_fallback == 0.700
+
+    # Unknown model with fallback: should return fallback
+    unknown_with_fallback = get_model_benchmark("completely-unknown-model-xyz", workload_type="chat", fallback_score=0.85)
+    assert unknown_with_fallback == 0.85

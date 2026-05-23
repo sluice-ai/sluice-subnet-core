@@ -11,6 +11,7 @@ from pathlib import Path
 MINER_ROOT = Path("/miner_agent")
 TASK_FILE = Path("/challenge/task.json")
 AGENT_RELATIVE_PATH = os.getenv("AGENT_RELATIVE_PATH", "agent.py")
+AGENT_ENTRYPOINT_CALLABLE = os.getenv("AGENT_ENTRYPOINT_CALLABLE", "agent_main")
 RUNNER_DEADLINE_S = int(os.getenv("RUNNER_DEADLINE_S", "45"))
 AGENT_SEARCH_PATHS = ("agent.py", "agent/agent.py", "router.py", "src/agent.py")
 
@@ -41,8 +42,10 @@ def load_agent():
     except Exception as exc:  # pragma: no cover - hard to trigger meaningfully in unit tests
         raise ImportError(f"agent.py failed to import: {exc}") from exc
 
-    if not hasattr(module, "agent_main"):
-        raise AttributeError("agent_main(task) not found in routing agent.")
+    if not hasattr(module, AGENT_ENTRYPOINT_CALLABLE):
+        raise AttributeError(
+            f"{AGENT_ENTRYPOINT_CALLABLE}(task) not found in routing agent."
+        )
     return module
 
 
@@ -62,14 +65,16 @@ class _AgentThread(threading.Thread):
 
     def run(self):
         try:
-            self.result = self.module.agent_main(self.task)
+            self.result = getattr(self.module, AGENT_ENTRYPOINT_CALLABLE)(self.task)
         except Exception as exc:  # pragma: no cover - error path only
             self.error = (type(exc).__name__, str(exc), traceback.format_exc())
 
 
 def validate_result(result: dict, task: dict) -> dict:
     if not isinstance(result, dict):
-        raise TypeError(f"agent_main() must return a dict, got {type(result).__name__}")
+        raise TypeError(
+            f"{AGENT_ENTRYPOINT_CALLABLE}() must return a dict, got {type(result).__name__}"
+        )
 
     normalized = dict(result)
     normalized.setdefault("task_id", task.get("task_id", "unknown"))
@@ -90,7 +95,7 @@ def validate_result(result: dict, task: dict) -> dict:
     )
     missing = [field for field in required_fields if field not in normalized]
     if missing:
-        raise KeyError(f"agent_main() missing required fields: {missing}")
+        raise KeyError(f"{AGENT_ENTRYPOINT_CALLABLE}() missing required fields: {missing}")
 
     normalized["selected_provider_id"] = str(normalized["selected_provider_id"]).strip()
     normalized["fallback_provider_ids"] = [str(value) for value in normalized["fallback_provider_ids"]]
@@ -124,10 +129,12 @@ def call_agent_with_deadline(module, task: dict) -> dict:
     thread.join(RUNNER_DEADLINE_S)
 
     if thread.is_alive():
-        raise TimeoutError(f"agent_main() timed out after {RUNNER_DEADLINE_S}s")
+        raise TimeoutError(
+            f"{AGENT_ENTRYPOINT_CALLABLE}() timed out after {RUNNER_DEADLINE_S}s"
+        )
     if thread.error:
         exc_type, exc_msg, _ = thread.error
-        raise RuntimeError(f"agent_main() raised {exc_type}: {exc_msg}")
+        raise RuntimeError(f"{AGENT_ENTRYPOINT_CALLABLE}() raised {exc_type}: {exc_msg}")
 
     return validate_result(thread.result, task)
 

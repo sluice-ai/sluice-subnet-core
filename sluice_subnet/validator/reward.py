@@ -24,6 +24,10 @@ def get_rewards(
     task: RoutingTask,
 ) -> np.ndarray:
     scores = score_many(reports, task)
+    if scores.size == 0:
+        bt.logging.warning("get_rewards -> no reports to score")
+        return scores
+
     bt.logging.info(
         f"get_rewards -> n={len(scores)} mean={np.mean(scores):.4f} "
         f"max={np.max(scores):.4f} nonzero={np.count_nonzero(scores)}"
