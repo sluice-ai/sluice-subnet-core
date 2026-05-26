@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from sluice.models import PrivacyTier, RouterArtifactFormat, RouterArtifactManifest
 from sluice.router.artifacts import (
@@ -9,6 +12,15 @@ from sluice.router.artifacts import (
     create_router_archive,
     write_manifest_file,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_default_env() -> None:
+    load_dotenv(PROJECT_ROOT / ".env.miner", override=False)
+    cwd_env = Path.cwd() / ".env.miner"
+    if cwd_env.resolve() != (PROJECT_ROOT / ".env.miner").resolve():
+        load_dotenv(cwd_env, override=False)
 
 
 def build_router_artifact(
@@ -74,6 +86,7 @@ def build_router_artifact(
 
 
 def parse_args() -> argparse.Namespace:
+    _load_default_env()
     parser = argparse.ArgumentParser(
         description="Build a pinned Sluice router artifact and manifest."
     )
@@ -109,6 +122,44 @@ def parse_args() -> argparse.Namespace:
             "a local file:// URI for development only."
         ),
     )
+    parser.add_argument(
+        "--hf-repo-id",
+        default=os.getenv("HF_ROUTER_REPO_ID", ""),
+        help="Upload the built artifact to this Hugging Face repo and rewrite the manifest.",
+    )
+    parser.add_argument(
+        "--hf-repo-type",
+        choices=["model", "dataset", "space"],
+        default=os.getenv("HF_ROUTER_REPO_TYPE", "model"),
+    )
+    parser.add_argument(
+        "--hf-path-prefix",
+        default=os.getenv("HF_ROUTER_PATH_PREFIX", "routers"),
+        help="Folder inside the Hugging Face repo for artifact and manifest files.",
+    )
+    parser.add_argument("--hf-artifact-path-in-repo", default=None)
+    parser.add_argument("--hf-manifest-path-in-repo", default=None)
+    parser.add_argument(
+        "--hf-revision",
+        default=os.getenv("HF_ROUTER_REVISION", "main"),
+        help="Hugging Face branch or revision to upload to.",
+    )
+    parser.add_argument(
+        "--hf-private",
+        action="store_true",
+        default=os.getenv("HF_ROUTER_PRIVATE", "0") == "1",
+        help="Create or use a private Hugging Face repo.",
+    )
+    parser.add_argument("--hf-no-create-repo", action="store_true")
+    parser.add_argument(
+        "--hf-token",
+        default=(
+            os.getenv("HF_TOKEN")
+            or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            or os.getenv("HUGGINGFACE_HUB_TOKEN")
+        ),
+    )
+    parser.add_argument("--hf-endpoint", default=os.getenv("HF_ENDPOINT") or None)
     return parser.parse_args()
 
 
@@ -127,6 +178,29 @@ def main() -> None:
         description=args.description,
         artifact_uri=args.artifact_uri,
     )
+    if args.hf_repo_id:
+        from sluice.router.huggingface import publish_router_artifact_to_huggingface
+
+        published = publish_router_artifact_to_huggingface(
+            artifact_path=artifact_path,
+            manifest_path=manifest_path,
+            repo_id=args.hf_repo_id,
+            repo_type=args.hf_repo_type,
+            path_prefix=args.hf_path_prefix,
+            artifact_path_in_repo=args.hf_artifact_path_in_repo,
+            manifest_path_in_repo=args.hf_manifest_path_in_repo,
+            revision=args.hf_revision,
+            private=args.hf_private,
+            create_repo=not args.hf_no_create_repo,
+            token=args.hf_token,
+            endpoint=args.hf_endpoint,
+        )
+        manifest = RouterArtifactManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        print(f"hf_artifact_uri={published.artifact_url}")
+        print(f"hf_manifest_uri={published.manifest_url}")
+
     print(f"artifact={artifact_path}")
     print(f"manifest={manifest_path}")
     print(f"sha256={manifest.sha256}")

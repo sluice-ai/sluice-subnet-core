@@ -51,8 +51,8 @@ cd /path/to/sluice-subnet-core
 python -m venv venv
 source venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env.miner
-cp .env.example .env.validator
+cp .env.miner.example .env.miner
+cp .env.validator.example .env.validator
 ```
 
 Build the sample router artifact:
@@ -71,6 +71,7 @@ Point the miner at the manifest:
 
 ```bash
 export ROUTER_MANIFEST_PATH="$(pwd)/dist/router/sluice-baseline-router-0.1.0.manifest.json"
+export SLUICE_ALLOW_LOCAL_ARTIFACT=1
 ```
 
 ## 3. Create wallets

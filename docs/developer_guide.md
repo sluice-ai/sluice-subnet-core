@@ -38,8 +38,8 @@ python -m pip install -r requirements.txt
 Copy the sample env files:
 
 ```bash
-cp .env.example .env.miner
-cp .env.example .env.validator
+cp .env.miner.example .env.miner
+cp .env.validator.example .env.validator
 ```
 
 ## Common Workflows

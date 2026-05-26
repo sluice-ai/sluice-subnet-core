@@ -7,6 +7,7 @@ This guide is for people operating Sluice subnet nodes.
 Miner responsibilities:
 
 - build and publish a pinned router artifact
+- upload the artifact tarball to a public Hugging Face repo for validators
 - announce a valid manifest over the subnet
 - keep the manifest honest about capabilities and privacy tiers
 - stay online so validators can query the miner axon
@@ -29,24 +30,49 @@ Validator responsibilities:
 
 ## Miner Checklist
 
-1. Build a router artifact and manifest.
-2. Upload the artifact to a public HTTP(S) URI before running on testnet or mainnet.
-3. Put the manifest path in `.env.miner` or export `ROUTER_MANIFEST_PATH`.
-4. Confirm the manifest entrypoint and digest are correct.
-5. Register the miner hotkey on the subnet.
-6. Start the miner and confirm the axon is serving.
+1. Copy `.env.miner.example` to `.env.miner`.
+2. Build a router artifact and manifest.
+3. Upload the artifact to a public Hugging Face repo before running on testnet or mainnet.
+4. Put the manifest path in `.env.miner` or export `ROUTER_MANIFEST_PATH`.
+5. Confirm the manifest entrypoint and digest are correct.
+6. Register the miner hotkey on the subnet.
+7. Start the miner and confirm the axon is serving.
+
+Build and publish in one command:
+
+```bash
+export HF_TOKEN=<write-token>
+
+python -m sluice.router.builder \
+  --source-dir agent \
+  --output-dir dist/router \
+  --router-name sluice-baseline-router \
+  --router-version 0.1.0 \
+  --capability json-mode \
+  --privacy-tier public \
+  --description "Baseline Sluice router artifact." \
+  --hf-repo-id <huggingface-user-or-org>/<repo-name> \
+  --hf-repo-type model \
+  --hf-path-prefix routers
+```
+
+The command uploads the tarball, rewrites `artifact_uri` in the manifest to the
+Hugging Face `resolve` URL, and uploads the manifest beside the tarball. The
+miner announces the local manifest JSON; validators fetch the tarball from
+Hugging Face and verify the SHA-256 digest before executing it.
 
 Recommended miner guidelines:
 
 - Only advertise artifacts you can reproduce and redeploy.
 - Do not use `file://` artifact URIs outside local smoke tests.
+- Keep the Hugging Face repo public unless every validator has an appropriate `HF_TOKEN`.
 - Keep the manifest description, version, and supported capabilities accurate.
 - Test the artifact with `python scripts/smoke_subnet_flow.py` before going on-chain.
 - Avoid overstating privacy support or capabilities; validators will score the actual output, not the claim.
 
 ## Validator Checklist
 
-1. Configure `.env.validator`.
+1. Copy `.env.validator.example` to `.env.validator`.
 2. Make sure Docker works on the host.
 3. Register the validator hotkey on the subnet.
 4. Stake enough to obtain a validator permit on the target subnet.
@@ -56,6 +82,7 @@ Recommended miner guidelines:
 Recommended validator guidelines:
 
 - Use a machine with reliable disk, CPU, and Docker support.
+- Leave `HF_TOKEN` empty for public artifacts; set it only if miners use private Hugging Face repos.
 - Watch `SLUICE_ARTIFACT_CACHE_DIR` growth and rotate or clean if needed.
 - Keep benchmark task sources and scoring logic deterministic.
 - Do not mix serving-layer API credentials into validator benchmarking unless the code path explicitly requires them.

@@ -22,15 +22,16 @@ The exact `btcli` argument spellings can vary by release. If your installed CLI 
 python -m venv venv
 source venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env.miner
-cp .env.example .env.validator
+cp .env.miner.example .env.miner
+cp .env.validator.example .env.validator
 docker info
 ```
 
-Build the router artifact you want to serve. Mainnet artifacts must use a public HTTP(S) URI, not `file://`.
+Build the router artifact you want to serve and publish it to Hugging Face.
+Mainnet artifacts must use a public HTTP(S) URI, not `file://`.
 
 ```bash
-export PUBLIC_ARTIFACT_URI="https://example.com/sluice-baseline-router-0.1.0.tar.gz"
+export HF_TOKEN=<write-token>
 
 python -m sluice.router.builder \
   --source-dir agent \
@@ -39,7 +40,9 @@ python -m sluice.router.builder \
   --router-version 0.1.0 \
   --capability json-mode \
   --privacy-tier public \
-  --artifact-uri "${PUBLIC_ARTIFACT_URI}"
+  --hf-repo-id <huggingface-user-or-org>/<repo-name> \
+  --hf-repo-type model \
+  --hf-path-prefix routers
 ```
 
 Write production env files:
@@ -52,6 +55,7 @@ ROUTER_VERSION=0.1.0
 ROUTER_SUMMARY=Baseline Sluice router artifact.
 ROUTER_SUPPORTED_CAPABILITIES=json-mode
 ROUTER_SUPPORTED_PRIVACY_TIERS=public
+SLUICE_ALLOW_LOCAL_ARTIFACT=0
 EOF
 
 cat > .env.validator <<EOF
@@ -62,6 +66,8 @@ SLUICE_ARTIFACT_CACHE_DIR=$HOME/.cache/sluice/router-artifacts
 MAX_CONCURRENT_SANDBOXES=4
 SANDBOX_TIMEOUT=45
 SLUICE_LOCAL_DEV_EXECUTION=0
+HF_TOKEN=
+HF_ENDPOINT=
 SLUICE_MOCK_ROUTER_MANIFEST_PATH=
 EOF
 

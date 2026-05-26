@@ -1,5 +1,5 @@
 {
-  "artifact_uri": "file:///absolute/path/to/router-artifact.tar.gz",
+  "artifact_uri": "https://huggingface.co/<user-or-org>/<repo>/resolve/<commit>/routers/router-artifact.tar.gz",
   "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "artifact_format": "tar.gz",
   "entrypoint_path": "agent.py",

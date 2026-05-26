@@ -42,17 +42,22 @@ class HostDockerContainer:
 
 
 class SandboxRunner:
-    IMAGE_NAME = os.getenv("SLUICE_SANDBOX_IMAGE", "sluice-router-agent:latest")
-    SANDBOX_TIMEOUT_S = int(os.getenv("SANDBOX_TIMEOUT", "45"))
-    MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_SANDBOXES", "4"))
-    HOST_RUNTIME_ROOT = Path(
-        os.getenv(
-            "SLUICE_HOST_RUNTIME_ROOT",
-            "~/.cache/sluice/host-runtime",
-        )
-    ).expanduser()
+    IMAGE_NAME = "sluice-router-agent:latest"
+    SANDBOX_TIMEOUT_S = 45
+    MAX_CONCURRENT = 4
+    HOST_RUNTIME_ROOT = Path("~/.cache/sluice/host-runtime").expanduser()
 
     def __init__(self, artifact_cache: ArtifactCache | None = None):
+        self.IMAGE_NAME = os.getenv("SLUICE_SANDBOX_IMAGE", self.IMAGE_NAME)
+        self.SANDBOX_TIMEOUT_S = int(
+            os.getenv("SANDBOX_TIMEOUT", str(self.SANDBOX_TIMEOUT_S))
+        )
+        self.MAX_CONCURRENT = int(
+            os.getenv("MAX_CONCURRENT_SANDBOXES", str(self.MAX_CONCURRENT))
+        )
+        self.HOST_RUNTIME_ROOT = Path(
+            os.getenv("SLUICE_HOST_RUNTIME_ROOT", str(self.HOST_RUNTIME_ROOT))
+        ).expanduser()
         self.client = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self.artifact_cache = artifact_cache or ArtifactCache()
@@ -350,6 +355,7 @@ class SandboxRunner:
         self._run_host_docker(
             ["wait", container_id],
             timeout=timeout,
+            capture_output=True,
         )
 
     def _host_docker_logs(
@@ -368,7 +374,7 @@ class SandboxRunner:
         if force:
             command.append("-f")
         command.append(container_id)
-        self._run_host_docker(command, check=False)
+        self._run_host_docker(command, check=False, capture_output=True)
 
     def _extract_report(self, container) -> Optional[RoutingExecutionReport]:
         raw_logs = container.logs(stdout=True, stderr=False).decode("utf-8", errors="ignore").strip()

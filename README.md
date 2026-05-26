@@ -38,8 +38,8 @@ python -m pip install -r requirements.txt
 Prepare local env files:
 
 ```bash
-cp .env.example .env.miner
-cp .env.example .env.validator
+cp .env.miner.example .env.miner
+cp .env.validator.example .env.validator
 ```
 
 Build the sample router artifact:
@@ -53,6 +53,25 @@ python -m sluice.router.builder \
   --capability json-mode \
   --privacy-tier public \
   --description "Baseline local router artifact for Sluice."
+```
+
+For testnet or mainnet, publish the built tarball to Hugging Face and let the
+builder rewrite the manifest to the public `resolve` URL:
+
+```bash
+export HF_TOKEN=<write-token>
+
+python -m sluice.router.builder \
+  --source-dir agent \
+  --output-dir dist/router \
+  --router-name sluice-baseline-router \
+  --router-version 0.1.0 \
+  --capability json-mode \
+  --privacy-tier public \
+  --description "Baseline Sluice router artifact." \
+  --hf-repo-id <huggingface-user-or-org>/<repo-name> \
+  --hf-repo-type model \
+  --hf-path-prefix routers
 ```
 
 Point the miner at the manifest:
@@ -70,17 +89,17 @@ python scripts/smoke_subnet_flow.py
 Run the subnet processes:
 
 ```bash
-python neurons/miner.py --netuid <your-netuid>
-python neurons/validator.py --netuid <your-netuid>
+./start_miner.sh
+./start_validator.sh
 ```
 
 ## Subnet Flow
 
 1. A miner builds a router artifact from private source code.
-2. The miner publishes a manifest with the artifact URI, digest, entrypoint, version, capabilities, and privacy tiers.
+2. The miner uploads the tarball to Hugging Face and publishes a manifest with the artifact URI, digest, entrypoint, version, capabilities, and privacy tiers.
 3. A validator samples hidden routing tasks.
 4. The validator queries miners for manifests.
-5. The validator downloads or resolves the exact artifact bytes, verifies the digest, and caches the artifact.
+5. The validator downloads the Hugging Face artifact URL, verifies the digest, and caches the artifact.
 6. The validator executes the router in the sandbox and scores the result.
 7. The validator updates miner weights on-chain.
 

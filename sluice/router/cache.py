@@ -120,8 +120,9 @@ class ArtifactCache:
         if parsed.scheme not in {"http", "https"}:
             raise ValueError(f"Unsupported artifact URI: {artifact_uri}")
 
+        headers = self._auth_headers_for_uri(artifact_uri)
         with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-            with client.stream("GET", artifact_uri) as response:
+            with client.stream("GET", artifact_uri, headers=headers or None) as response:
                 response.raise_for_status()
                 with destination.open("wb") as handle:
                     for chunk in response.iter_bytes():
@@ -136,6 +137,24 @@ class ArtifactCache:
         if parsed.scheme == "":
             return Path(artifact_uri).expanduser()
         return None
+
+    @staticmethod
+    def _auth_headers_for_uri(artifact_uri: str) -> dict[str, str]:
+        token = (
+            os.getenv("HF_TOKEN")
+            or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            or os.getenv("HUGGINGFACE_HUB_TOKEN")
+        )
+        if not token:
+            return {}
+
+        parsed = urlparse(artifact_uri)
+        endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+        hf_host = urlparse(endpoint).netloc or "huggingface.co"
+        if parsed.netloc not in {hf_host, "huggingface.co"}:
+            return {}
+
+        return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
     def _copy_directory(source_dir: Path, destination: Path) -> None:

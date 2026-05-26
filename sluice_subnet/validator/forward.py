@@ -3,6 +3,8 @@ from pathlib import Path
 import bittensor as bt
 from dotenv import load_dotenv
 
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env.validator")
+
 from sluice.benchmark_client import BenchmarkClient
 from sluice.sandbox import SandboxRunner
 from sluice.scorer import reference_provider
@@ -10,8 +12,6 @@ from sluice.validation import manifest_from_synapse
 from sluice_subnet.protocol import RoutePlanSynapse
 from sluice_subnet.utils.uids import get_random_uids
 from sluice_subnet.validator.reward import get_rewards
-
-load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env.validator")
 
 benchmark_client = BenchmarkClient()
 sandbox = SandboxRunner()

@@ -2,6 +2,7 @@ import os
 import sys
 import typing
 from pathlib import Path
+from urllib.parse import urlparse
 
 import bittensor as bt
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ class Miner(BaseMinerNeuron):
     def __init__(self, config=None):
         super().__init__(config=config)
         self.router_manifest = self._load_router_manifest()
+        self._validate_artifact_uri()
         self.router_label = os.getenv(
             "ROUTER_LABEL", self.router_manifest.router_name
         ).strip()
@@ -64,6 +66,21 @@ class Miner(BaseMinerNeuron):
             supported_capabilities=self._split_env("ROUTER_SUPPORTED_CAPABILITIES"),
             supported_privacy_tiers=self._split_env("ROUTER_SUPPORTED_PRIVACY_TIERS") or ["public"],
             description=os.getenv("ROUTER_SUMMARY", "").strip(),
+        )
+
+    def _validate_artifact_uri(self) -> None:
+        if self.config.mock or os.getenv("SLUICE_ALLOW_LOCAL_ARTIFACT", "0") == "1":
+            return
+
+        parsed = urlparse(self.router_manifest.artifact_uri)
+        if parsed.scheme in {"http", "https"}:
+            return
+
+        raise EnvironmentError(
+            "Live miners must announce a public http(s) router artifact URI. "
+            "Build and publish with `python -m sluice.router.builder --hf-repo-id "
+            "<user-or-org>/<repo>` so validators can pull the tarball from Hugging Face. "
+            "For local-only tests, set SLUICE_ALLOW_LOCAL_ARTIFACT=1."
         )
 
     def _supports_task(self, synapse: sluice_subnet.protocol.RoutePlanSynapse) -> bool:

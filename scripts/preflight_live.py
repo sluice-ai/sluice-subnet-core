@@ -139,8 +139,9 @@ def _check_miner(env: dict[str, str], allow_local_artifact: bool) -> list[tuple[
     else:
         checks.append(
             _fail(
-                "miner artifact URI is local. Upload the artifact and build the manifest "
-                f"with --artifact-uri. Current URI: {manifest.artifact_uri}"
+                "miner artifact URI is local. Publish the tarball to Hugging Face "
+                "with `python -m sluice.router.builder --hf-repo-id ...` before "
+                f"live operation. Current URI: {manifest.artifact_uri}"
             )
         )
 
@@ -165,6 +166,17 @@ def _check_validator(env: dict[str, str]) -> list[tuple[bool, str]]:
         checks.append(_ok("validator will build the sandbox image on startup"))
 
     checks.append(_check_docker(env))
+    hf_token = (
+        env.get("HF_TOKEN", "").strip()
+        or env.get("HUGGING_FACE_HUB_TOKEN", "").strip()
+        or env.get("HUGGINGFACE_HUB_TOKEN", "").strip()
+    )
+    if hf_token:
+        checks.append(_ok("validator has Hugging Face token for private/gated artifacts"))
+    else:
+        checks.append(
+            _warn("validator HF_TOKEN is unset; public Hugging Face artifacts will still work")
+        )
     return checks
 
 
